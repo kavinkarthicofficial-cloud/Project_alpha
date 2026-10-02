@@ -11,8 +11,10 @@ ROOT = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
-    # The product name is not decided yet; everything user-facing reads it from here.
+    # Everything user-facing reads the name from here (set ASSISTANT_NAME=Vector in .env).
     assistant_name: str = "Assistant"
+    # What you say to wake it by voice. Defaults to the assistant's name.
+    wake_word: str | None = None
     models_config: Path = ROOT / "config" / "models.yaml"
     # Unset -> conversations are kept in memory only (fine for local dev and tests).
     database_url: str | None = None

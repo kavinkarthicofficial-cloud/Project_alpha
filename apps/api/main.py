@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core.agent.orchestrator import (
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Project Alpha", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def get_orchestrator(request: Request) -> Orchestrator:
@@ -95,6 +97,15 @@ async def _session_or_404(orch: Orchestrator, session_id: uuid.UUID):
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/config")
+async def ui_config() -> dict[str, str]:
+    settings = get_settings()
+    return {
+        "assistant_name": settings.assistant_name,
+        "wake_word": settings.wake_word or settings.assistant_name,
+    }
 
 
 @app.get("/health")

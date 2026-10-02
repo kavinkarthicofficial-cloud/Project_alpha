@@ -79,3 +79,16 @@ async def test_web_page_is_served(client):
     async with client:
         resp = await client.get("/")
         assert resp.status_code == 200 and "<title>" in resp.text
+
+
+async def test_config_exposes_name_and_wake_word(client, monkeypatch):
+    monkeypatch.setenv("ASSISTANT_NAME", "Nova")
+    from core.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        async with client:
+            assert (await client.get("/config")).json() == {"assistant_name": "Nova", "wake_word": "Nova"}
+            assert (await client.get("/static/voice.js")).status_code == 200
+    finally:
+        get_settings.cache_clear()
