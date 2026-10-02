@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     assistant_name: str = "Assistant"
     # What you say to wake it by voice. Defaults to the assistant's name.
     wake_word: str | None = None
+    # When set, every API call needs it (Authorization: Bearer ...). Required before
+    # the server is reachable from other devices; `python -m apps.cli.pair` sets it up.
+    access_token: str | None = None
     models_config: Path = ROOT / "config" / "models.yaml"
     # Unset -> conversations are kept in memory only (fine for local dev and tests).
     database_url: str | None = None

@@ -65,6 +65,32 @@ on your machine. A fully local speech pipeline (Whisper) is planned for Phase 6.
 | GET | `/memories` | what the assistant remembers, newest first |
 | DELETE | `/memories/{id}` | forget one memory |
 
+### iPhone app
+
+Vector installs on the iPhone as a home-screen web app (PWA): full screen, its own
+icon, the same HUD with a phone layout (tabs for Comms, Core, Memory, System). The
+Mac runs the server; the phone connects to it.
+
+1. **Reach the Mac securely from the phone.** Install [Tailscale](https://tailscale.com)
+   on the Mac and the iPhone and sign in to the same account. Then, on the Mac:
+   `tailscale serve --bg 8000`. This gives the Mac an `https://<mac-name>.<tailnet>.ts.net`
+   address that only your own devices can open. (HTTPS is required: without it, the
+   iPhone blocks the microphone.)
+2. **Lock the API and pair the phone:**
+   `.venv/bin/python -m apps.cli.pair --url https://<mac-name>.<tailnet>.ts.net`
+   This saves an `ACCESS_TOKEN` in `.env` and prints a link and a QR code. Restart the
+   server.
+3. **Install:** scan the QR code with the iPhone camera, open it in Safari, then
+   **Share → Add to Home Screen**.
+
+Once `ACCESS_TOKEN` is set, every device needs the pairing link, including the Mac's
+browser. `--rotate` issues a new token and un-pairs everything.
+
+Limits on iPhone: voice wake and clap wake only work while the app is open on screen
+(iOS doesn't let web apps listen in the background), and speech recognition goes
+through Apple's servers. Hands-free "Hey Siri, ask Vector" needs a native app, which
+needs Xcode.
+
 ### Postgres (keeps conversations and memories across restarts)
 
 ```bash

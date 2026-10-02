@@ -88,7 +88,37 @@ async def test_config_exposes_name_and_wake_word(client, monkeypatch):
     get_settings.cache_clear()
     try:
         async with client:
-            assert (await client.get("/config")).json() == {"assistant_name": "Nova", "wake_word": "Nova"}
+            cfg = (await client.get("/config")).json()
+            assert (cfg["assistant_name"], cfg["wake_word"]) == ("Nova", "Nova")
             assert (await client.get("/static/voice.js")).status_code == 200
     finally:
         get_settings.cache_clear()
+
+
+@pytest.fixture
+def locked(monkeypatch):
+    from core.config import get_settings
+
+    monkeypatch.setenv("ACCESS_TOKEN", "s3cret-token")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_access_token_protects_the_api(client, locked):
+    async with client:
+        assert (await client.get("/memories")).status_code == 401
+        bad = {"authorization": "Bearer wrong"}
+        assert (await client.post("/sessions", json={}, headers=bad)).status_code == 401
+        good = {"authorization": "Bearer s3cret-token"}
+        assert (await client.post("/sessions", json={}, headers=good)).status_code == 201
+        assert (await client.get("/memories", headers=good)).status_code == 200
+
+
+async def test_page_shell_stays_public_when_locked(client, locked):
+    async with client:
+        assert (await client.get("/")).status_code == 200
+        assert (await client.get("/static/voice.js")).status_code == 200
+        assert (await client.get("/config")).json()["auth_required"] is True
+        manifest = (await client.get("/manifest.webmanifest")).json()
+        assert manifest["display"] == "standalone" and manifest["icons"]

@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06111b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <title>Assistant</title>
 <style>
   :root {
@@ -72,7 +78,7 @@
     display: flex; min-height: 0;
   }
   .panel > .inner {
-    flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--panel);
+    flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel);
     clip-path: inherit;
   }
   .head {
@@ -163,6 +169,7 @@
   .caption { min-height: 26px; padding: 2px 20px; color: var(--green); font-style: italic; }
   .compose { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); }
   .compose input {
+    min-width: 0;
     flex: 1; background: rgba(5, 18, 28, 0.8); border: 1px solid var(--line-2); padding: 10px 12px;
   }
   .compose input::placeholder { color: var(--muted); }
@@ -191,6 +198,19 @@
 
   .foot { grid-area: foot; display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }
 
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--state); box-shadow: 0 0 8px var(--state); flex: none; }
+  .mic { padding: 0 14px; font-size: 18px; line-height: 1; }
+  body[data-state="listening"] .mic { color: var(--green); border-color: var(--green); }
+  .tabs { display: none; }
+  .lock {
+    position: fixed; inset: 0; z-index: 10; display: none; place-items: center; padding: 24px;
+    background: rgba(4, 12, 20, 0.94); text-align: center;
+  }
+  body.locked .lock { display: grid; }
+  .lock h2 { color: var(--red); letter-spacing: 0.2em; margin: 0 0 8px; }
+  .lock p { color: var(--muted); max-width: 360px; margin: 6px auto; }
+  .lock code { color: var(--cyan); }
+
   @media (max-width: 1100px) {
     .hud { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "left" "center" "right" "foot"; grid-template-rows: auto; height: auto; }
     .center .inner { min-height: 70vh; }
@@ -198,18 +218,58 @@
     .status-pill b { min-width: 0; }
     .clock { display: none; }
   }
-  @media (max-width: 520px) {
-    .hud { padding: 12px; gap: 12px; }
-    .brand { font-size: 18px; }
-    .status-pill { padding: 6px 10px; font-size: 12px; }
+  /* Phone: one screen at a time, switched by a bottom tab bar. */
+  @media (max-width: 700px) {
+    .hud {
+      height: 100dvh; gap: 10px;
+      padding: calc(env(safe-area-inset-top) + 8px) 10px 0;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: "top" "main" "tabs";
+    }
+    .foot { display: none; }
+    .left, .center, .right { grid-area: main; min-height: 0; }
+    .center .inner { min-height: 0; }
+    body:not([data-view="core"]) .left,
+    body:not([data-view="comms"]) .center,
+    body:not([data-view="memory"]):not([data-view="system"]) .right { display: none; }
+    body[data-view="memory"] .right > :not(.v-memory),
+    body[data-view="system"] .right > :not(.v-system) { display: none; }
+    .left { overflow-y: auto; }
+    .core { max-height: 42vh; width: auto; }
+    .brand { font-size: 17px; }
+    .brand svg { width: 28px; height: 28px; }
+    .status-pill { padding: 6px 10px; font-size: 11px; }
     .status-pill .lbl { display: none; }
+    .log { padding: 12px; }
+    .compose { padding: 10px; gap: 8px; }
+    .compose input { font-size: 16px; } /* 16px stops iOS zooming into the field */
+    .compose .btn.primary:last-child { padding: 8px 10px; }
+    .tabs {
+      grid-area: tabs; display: grid; grid-template-columns: repeat(4, 1fr);
+      margin: 0 -10px; padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px);
+      border-top: 1px solid var(--line); background: rgba(8, 22, 34, 0.97);
+    }
+    .tabs button {
+      background: none; border: 0; padding: 8px 0 4px; color: var(--muted); font-size: 12px; cursor: pointer;
+      display: grid; justify-items: center; gap: 2px;
+    }
+    .tabs button span { font-size: 17px; line-height: 1; }
+    .tabs button[aria-selected="true"] { color: var(--cyan); text-shadow: var(--glow); }
   }
   @media (prefers-reduced-motion: reduce) {
     .spin, .pulse { animation: none !important; }
   }
 </style>
 </head>
-<body data-state="idle">
+<body data-state="idle" data-view="comms">
+<div class="lock" role="alertdialog" aria-labelledby="lock-title">
+  <div>
+    <h2 class="caps" id="lock-title">Access locked</h2>
+    <p>This device isn't paired yet. On the Mac, run</p>
+    <p><code>python -m apps.cli.pair --url &lt;this address&gt;</code></p>
+    <p>and open the link it prints on this device.</p>
+  </div>
+</div>
 <div class="hud">
   <header class="topbar">
     <div class="brand caps">
@@ -221,6 +281,7 @@
       <span data-name>Assistant</span>
     </div>
     <div class="status-pill caps" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
       <span class="lbl">System status:</span> <b id="status">Standby</b>
     </div>
     <div class="clock caps" id="clock"></div>
@@ -297,13 +358,14 @@
     </div>
     <div class="caption" id="caption"></div>
     <form class="compose" id="form">
-      <input id="input" autocomplete="off" placeholder="Enter command…" aria-label="Message">
+      <button class="btn mic" type="button" id="mic" title="Talk" aria-label="Talk">◉</button>
+      <input id="input" autocomplete="off" placeholder="Enter command…" aria-label="Message" enterkeyhint="send">
       <button class="btn primary caps" type="submit">Transmit</button>
     </form>
   </div></section>
 
   <section class="right">
-    <div class="panel"><div class="inner">
+    <div class="panel v-system"><div class="inner">
       <div class="head caps"><span class="title">Control panel</span><span class="deco"><i></i><i></i></span></div>
       <div class="body">
         <div class="field caps"><label for="model">Model</label><select id="model"></select></div>
@@ -319,16 +381,23 @@
       </div>
     </div></div>
 
-    <div class="panel" style="flex: 1"><div class="inner">
+    <div class="panel v-memory" style="flex: 1"><div class="inner">
       <div class="head caps"><span class="title">Memory bank</span><span class="deco"><i></i><i></i></span></div>
       <div class="memories" id="memories"></div>
     </div></div>
 
-    <div class="panel"><div class="inner">
+    <div class="panel v-system"><div class="inner">
       <div class="head caps"><span class="title">System log</span><span class="deco"><i></i><i></i></span></div>
       <div class="syslog" id="syslog"></div>
     </div></div>
   </section>
+
+  <nav class="tabs caps" role="tablist" aria-label="Sections">
+    <button role="tab" data-view="comms" aria-selected="true"><span>▤</span>Comms</button>
+    <button role="tab" data-view="core" aria-selected="false"><span>◎</span>Core</button>
+    <button role="tab" data-view="memory" aria-selected="false"><span>◈</span>Memory</button>
+    <button role="tab" data-view="system" aria-selected="false"><span>⚙</span>System</button>
+  </nav>
 
   <footer class="foot caps">
     <span id="session">Session —</span>
@@ -349,8 +418,24 @@ const store = {
   set(key, value) { try { localStorage.setItem(`hud.${key}`, JSON.stringify(value)); } catch { /* storage off */ } },
 };
 
+// Pairing: the link from `python -m apps.cli.pair` carries ?token=...; keep it on
+// this device and take it out of the address bar.
+const urlToken = new URLSearchParams(location.search).get("token");
+if (urlToken) {
+  store.set("token", urlToken);
+  history.replaceState(null, "", location.pathname);
+}
+const token = store.get("token", null);
+
+function headers() {
+  const h = { "content-type": "application/json" };
+  if (token) h.authorization = `Bearer ${token}`;
+  return h;
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
+  const res = await fetch(path, { headers: headers(), ...opts });
+  if (res.status === 401) document.body.classList.add("locked");
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.status === 204 ? null : res.json();
 }
@@ -446,6 +531,17 @@ $("t-speak").onclick = () => {
   store.set("speak", on);
 };
 $("talk").onclick = () => voice.wake();
+$("mic").onclick = () => voice.wake();
+
+// Phone tab bar
+for (const tab of document.querySelectorAll(".tabs button")) {
+  tab.onclick = () => {
+    document.body.dataset.view = tab.dataset.view;
+    for (const t of document.querySelectorAll(".tabs button")) {
+      t.setAttribute("aria-selected", String(t === tab));
+    }
+  };
+}
 
 for (const id of ["t-private", "t-incognito"]) {
   $(id).onclick = () => setToggle($(id), $(id).getAttribute("aria-pressed") !== "true");
@@ -530,7 +626,7 @@ async function send(text, spoken = false) {
   try {
     const res = await fetch(`/sessions/${sessionId}/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: headers(),
       body: JSON.stringify({
         message: text,
         model: $("model").value || null,
@@ -588,7 +684,12 @@ $("form").onsubmit = (e) => {
 
 // ---- start up ----
 (async () => {
-  const [cfg, models] = await Promise.all([api("/config"), api("/models")]);
+  const cfg = await api("/config");
+  if (cfg.auth_required && !token) {
+    document.body.classList.add("locked");
+    return;
+  }
+  const models = await api("/models");
   wakeWord = cfg.wake_word;
   voice.wakeWord = cfg.wake_word;
   document.title = cfg.assistant_name;

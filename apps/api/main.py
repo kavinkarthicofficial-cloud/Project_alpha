@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import secrets
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -47,6 +48,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Project Alpha", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+# The page shell and its assets load without a token; everything that touches
+# conversations or memories needs it.
+PUBLIC_PATHS = {"/", "/health", "/config", "/manifest.webmanifest"}
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    token = get_settings().access_token
+    path = request.url.path
+    if token and path not in PUBLIC_PATHS and not path.startswith("/static/"):
+        supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not secrets.compare_digest(supplied.encode(), token.encode()):
+            return JSONResponse({"detail": "Missing or wrong access token"}, status_code=401)
+    return await call_next(request)
 
 
 def get_orchestrator(request: Request) -> Orchestrator:
@@ -100,12 +116,36 @@ async def index() -> FileResponse:
 
 
 @app.get("/config")
-async def ui_config() -> dict[str, str]:
+async def ui_config() -> dict[str, Any]:
     settings = get_settings()
     return {
         "assistant_name": settings.assistant_name,
         "wake_word": settings.wake_word or settings.assistant_name,
+        "auth_required": bool(settings.access_token),
     }
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+async def manifest() -> JSONResponse:
+    """Makes the page installable: Safari > Share > Add to Home Screen."""
+    name = get_settings().assistant_name
+    return JSONResponse(
+        {
+            "name": name,
+            "short_name": name,
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": "#06111b",
+            "theme_color": "#06111b",
+            "icons": [
+                {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            ],
+        },
+        media_type="application/manifest+json",
+    )
 
 
 @app.get("/health")
