@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e4e3df;
+    --accent: #2f5bd3; --user: #eef2fd; --warn: #9a6a00; --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9a9993; --line: #33332f;
+      --accent: #8aa8ff; --user: #23293a; --warn: #e0b45a; --danger: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  .app { display: grid; grid-template-columns: 1fr 320px; height: 100dvh; }
+  main { display: flex; flex-direction: column; min-width: 0; }
+  header { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 auto 0 0; }
+  select, button, textarea { font: inherit; color: inherit; }
+  select, button { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  label.toggle { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 760px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); padding: 8px 12px; border-radius: 12px; }
+  .msg.assistant { align-self: flex-start; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .notice { color: var(--warn); font-size: 13px; }
+  .error { color: var(--danger); }
+  .recalled { font-size: 12px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; margin-bottom: 6px; }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  textarea { flex: 1; resize: none; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  form button { background: var(--accent); color: #fff; border: 0; padding: 0 16px; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  aside h2 { font-size: 14px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  #memories { overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .mem { font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .mem .row { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+  .mem button { border: 0; padding: 0; color: var(--danger); background: none; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; }
+  @media (max-width: 800px) { .app { grid-template-columns: 1fr; } aside { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <main>
+    <header>
+      <h1>Assistant</h1>
+      <select id="model" title="Model"></select>
+      <label class="toggle" title="Only local models see this message"><input type="checkbox" id="private"> Private</label>
+      <label class="toggle" title="Nothing from this message is remembered"><input type="checkbox" id="incognito"> Incognito</label>
+      <button id="new">New chat</button>
+    </header>
+    <div id="log"></div>
+    <form id="form">
+      <textarea id="input" rows="2" placeholder="Message… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button type="submit">Send</button>
+    </form>
+  </main>
+  <aside>
+    <h2>Memories <button id="refresh" title="Refresh">↻</button></h2>
+    <div id="memories"></div>
+  </aside>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let sessionId = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.status === 204 ? null : res.json();
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function scrollDown() { $("log").scrollTop = $("log").scrollHeight; }
+
+async function loadModels() {
+  const { models, routes } = await api("/models");
+  const sel = $("model");
+  sel.append(new Option(`default (${routes.chat})`, ""));
+  for (const m of models) sel.append(new Option(`${m.alias}${m.local ? " · local" : ""}`, m.alias));
+}
+
+async function newSession() {
+  sessionId = (await api("/sessions", { method: "POST", body: "{}" })).id;
+  $("log").replaceChildren();
+}
+
+async function loadMemories() {
+  const list = $("memories");
+  const items = await api("/memories?limit=100");
+  list.replaceChildren();
+  if (!items.length) { list.append(el("div", "empty", "Nothing remembered yet.")); return; }
+  for (const m of items) {
+    const row = el("div", "mem");
+    const top = el("div", "row");
+    top.append(el("span", "", new Date(m.occurred_at).toLocaleString() + (m.private ? " · private" : "")));
+    const del = el("button", "", "forget");
+    del.onclick = async () => { await api(`/memories/${m.id}`, { method: "DELETE" }); loadMemories(); };
+    top.append(del);
+    row.append(top, el("div", "", m.text));
+    list.append(row);
+  }
+}
+
+// Minimal Server-Sent Events parser for a fetch() body.
+async function* sse(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const event = /^event: (.*)$/m.exec(chunk)?.[1];
+      const data = /^data: (.*)$/m.exec(chunk)?.[1];
+      if (event && data) yield { event, data: JSON.parse(data) };
+    }
+  }
+}
+
+async function send(text) {
+  const log = $("log");
+  log.append(el("div", "msg user", text));
+  const reply = el("div", "msg assistant");
+  const body = el("div");
+  reply.append(body);
+  log.append(reply);
+  scrollDown();
+
+  const res = await fetch(`/sessions/${sessionId}/chat`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      message: text,
+      model: $("model").value || null,
+      private: $("private").checked,
+      incognito: $("incognito").checked,
+    }),
+  });
+  if (!res.ok) { body.append(el("span", "error", `Request failed: ${res.status}`)); return; }
+
+  for await (const { event, data } of sse(res)) {
+    if (event === "text") body.append(data.text);
+    else if (event === "memory") {
+      const r = el("div", "recalled", "Remembered: " + data.memories.map((m) => m.text).join(" · "));
+      reply.insertBefore(r, body);
+    } else if (event === "notice") reply.append(el("div", "notice", data.text));
+    else if (event === "tool_call") reply.append(el("div", "meta", `→ ${data.name}`));
+    else if (event === "error") reply.append(el("div", "error", data.message));
+    else if (event === "done") {
+      const u = data.usage;
+      reply.append(el("div", "meta", `${data.model_alias} · ${u.input_tokens} in / ${u.output_tokens} out`));
+    }
+    scrollDown();
+  }
+  loadMemories();
+}
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("input").value.trim();
+  if (!text) return;
+  $("input").value = "";
+  await send(text);
+};
+$("input").onkeydown = (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+};
+$("new").onclick = newSession;
+$("refresh").onclick = loadMemories;
+
+(async () => {
+  await loadModels();
+  await newSession();
+  await loadMemories();
+})();
+</script>
+</body>
+</html>
