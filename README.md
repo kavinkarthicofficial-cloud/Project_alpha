@@ -1,7 +1,7 @@
-# Project Alpha
+# Vector
 
-A personal assistant with long-term memory. Working title: the name is set by
-`ASSISTANT_NAME` until we pick one.
+A personal assistant with long-term memory, built in Project Alpha. Say "Vector" to
+wake it. The name and wake word come from `ASSISTANT_NAME` / `WAKE_WORD` in `.env`.
 
 **Status: Phase 1 (episodic memory).** The assistant remembers what you tell it and
 recalls it in later conversations, with any model. Fact extraction with dates and
@@ -11,7 +11,7 @@ conflict resolution is Phase 2.
 
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-cp .env.example .env            # add ANTHROPIC_API_KEY / OPENAI_API_KEY if you have them
+cp .env.example .env            # set ASSISTANT_NAME=Vector; add API keys if you have them
 ollama pull nomic-embed-text    # local embedding model for memory search (~270 MB)
 
 # Terminal chat (no database needed; conversations live in memory)
@@ -33,8 +33,27 @@ Without `DATABASE_URL`, memories last until the process exits. Set up Postgres
 .venv/bin/uvicorn apps.api.main:app --reload    # then open http://localhost:8000
 ```
 
-The page has streaming chat, a model picker, Private and Incognito toggles, the
-memories each answer used, and a panel to review and forget memories.
+The page is a sci-fi HUD: a central core that shows what the assistant is doing
+(standby, armed, listening, processing, speaking), streaming chat, a model picker,
+Private and Incognito toggles, the memories each answer used, and a memory bank where
+you can forget anything.
+
+### Voice control (in the web page)
+
+| Mode | How it works |
+|---|---|
+| **Voice wake** | Say the wake word, then your request: "Nova, what's on today?" Saying just "Nova" chimes and waits for your request. The wake word is `WAKE_WORD`, or `ASSISTANT_NAME` if unset. |
+| **Clap wake** | Clap twice to wake; clap twice while it's talking to interrupt. Claps are told apart from speech by how fast the sound dies away ([voice.js](apps/api/static/voice.js)). |
+| **Voice reply** | Reads answers aloud (prefers an en-GB voice). |
+| **Tap to talk** | One request without a wake word. |
+
+Needs Chrome, Edge or Safari, and microphone permission (works on `localhost`; other
+hosts need HTTPS). Clap wake works in any modern browser.
+
+**Privacy:** wake-word and command recognition use the browser's built-in speech
+recognition. Chrome and Edge send that audio to their cloud speech service, which is
+also what makes listening for the wake word continuous. Clap detection runs entirely
+on your machine. A fully local speech pipeline (Whisper) is planned for Phase 6.
 
 | Method | Path | |
 |---|---|---|
@@ -114,14 +133,15 @@ small local judges make mistakes too.
 ## Tests
 
 ```bash
-.venv/bin/pytest            # no network or API keys needed
+.venv/bin/pytest                          # no network or API keys needed
+node --test tests/js/*.test.mjs           # clap detection + wake-word matching
 .venv/bin/ruff check .
 ```
 
 ## Layout
 
 ```
-apps/api/        FastAPI server (SSE streaming) + web page (static/index.html)
+apps/api/        FastAPI server (SSE streaming) + HUD web page and voice control (static/)
 apps/cli/        terminal chat
 core/llm/        neutral types, provider adapters (Anthropic, OpenAI, Ollama), registry + router
 core/agent/      orchestrator (agent loop), context budgeting, system prompt
