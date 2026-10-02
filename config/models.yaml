@@ -40,6 +40,34 @@ models:
     supports_mid_system: true
     can_write_memory: true
 
+  # Google Gemini through its OpenAI-compatible API. Key: GEMINI_API_KEY in .env
+  # (free tier at aistudio.google.com; free-tier prompts may be used by Google).
+  gemini:
+    provider: openai
+    model: gemini-flash-latest
+    context_window: 1000000
+    max_output_tokens: 8192
+    supports_tools: true
+    supports_mid_system: true
+    can_write_memory: true
+    options:
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+      api_key_env: GEMINI_API_KEY
+      thought_signatures: true
+
+  gemini-lite:
+    provider: openai
+    model: gemini-flash-lite-latest
+    context_window: 1000000
+    max_output_tokens: 8192
+    supports_tools: true
+    supports_mid_system: true
+    can_write_memory: true
+    options:
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+      api_key_env: GEMINI_API_KEY
+      thought_signatures: true
+
   llama3:
     provider: ollama
     model: llama3:latest
@@ -69,7 +97,7 @@ routes:
   judge: opus           # grades eval answers
 
 # If a model is unavailable (no key, network, rate limit, outage), try these in order.
-fallback_order: [opus, gpt, haiku, llama3]
+fallback_order: [opus, gpt, gemini, haiku, llama3]
 
 # Turns text into vectors for memory search. Changing this model means re-embedding
 # stored memories: vectors from different models can't be compared.

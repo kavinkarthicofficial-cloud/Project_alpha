@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from core.llm.anthropic_provider import to_anthropic
 from core.llm.ollama_provider import to_ollama
-from core.llm.openai_provider import to_openai
+from core.llm.openai_provider import GEMINI_SKIP_SIGNATURE, to_openai
 from core.llm.types import Message, ToolCallBlock, ToolResultBlock
 from tests.fakes import profile
 
@@ -83,4 +83,36 @@ async def test_anthropic_without_credentials_is_unavailable(monkeypatch):
     monkeypatch.setenv("HOME", "/nonexistent")
     with pytest.raises(ProviderUnavailable, match="(?i)credentials"):
         async for _ in AnthropicProvider().stream(profile("opus", "anthropic"), [Message.text("user", "hi")]):
+            pass
+
+
+def test_gemini_thought_signature_is_replayed_to_the_same_model_only():
+    gemini = profile("gemini", "openai", model="gemini-flash-latest", options={"thought_signatures": True})
+    lite = profile("lite", "openai", model="gemini-flash-lite-latest", options={"thought_signatures": True})
+    plain = profile("gpt", "openai", model="gpt-5")
+    signed = {"google": {"thought_signature": "abc"}}
+    msgs = [
+        Message.text("user", "time?"),
+        Message(
+            role="assistant",
+            content=[CALL],
+            provider_state={"openai": {"model": "gemini-flash-latest", "tool_call_extra": {"call_1": signed}}},
+        ),
+    ]
+
+    assert to_openai(msgs, gemini)[1]["tool_calls"][0]["extra_content"] == signed
+    assert to_openai(msgs, lite)[1]["tool_calls"][0]["extra_content"] == GEMINI_SKIP_SIGNATURE
+    assert "extra_content" not in to_openai(msgs, plain)[1]["tool_calls"][0]
+
+
+async def test_openai_compatible_model_without_its_key_is_unavailable(monkeypatch):
+    import pytest
+
+    from core.llm.openai_provider import OpenAIProvider
+    from core.llm.types import ProviderUnavailable
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    gemini = profile("gemini", "openai", options={"base_url": "https://example.invalid/", "api_key_env": "GEMINI_API_KEY"})
+    with pytest.raises(ProviderUnavailable, match="GEMINI_API_KEY"):
+        async for _ in OpenAIProvider().stream(gemini, [Message.text("user", "hi")]):
             pass

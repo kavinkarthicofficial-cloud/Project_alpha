@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,4 +25,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # Provider SDKs read API keys from the environment, so export .env there too
+    # (without overriding variables that are already set).
+    load_dotenv(ROOT / ".env", override=False)
     return Settings()
