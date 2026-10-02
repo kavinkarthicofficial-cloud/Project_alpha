@@ -1,0 +1,81 @@
+# Every model the assistant can use. Memory lives in Postgres, not in any model,
+# so you can switch between these mid-conversation without losing anything.
+#
+# alias -> referenced by routes, fallback_order, the API (`model` field) and /model in the CLI.
+
+providers:
+  anthropic: {}            # credentials: ANTHROPIC_API_KEY, or `ant auth login`
+  openai: {}               # credentials: OPENAI_API_KEY
+  ollama:
+    base_url: http://localhost:11434   # override with OLLAMA_BASE_URL
+
+models:
+  opus:
+    provider: anthropic
+    model: claude-opus-5-5
+    context_window: 1000000
+    max_output_tokens: 64000
+    supports_tools: true
+    supports_mid_system: true
+    can_write_memory: true
+    options:
+      effort: medium            # low | medium | high | xhigh | max
+      server_fallback: true     # retry safety-classifier refusals on a recommended model
+
+  haiku:
+    provider: anthropic
+    model: claude-haiku-4-5
+    context_window: 200000
+    max_output_tokens: 16000
+    supports_tools: true
+    supports_mid_system: false
+    can_write_memory: true
+
+  gpt:
+    provider: openai
+    model: gpt-5                # set to whichever OpenAI model you want
+    context_window: 400000
+    max_output_tokens: 32000
+    supports_tools: true
+    supports_mid_system: true
+    can_write_memory: true
+
+  llama3:
+    provider: ollama
+    model: llama3:latest
+    context_window: 8192
+    max_output_tokens: 2048
+    supports_tools: false       # llama3 (v1) has no tool calling in Ollama
+    supports_mid_system: true
+    can_write_memory: false     # small local models read memory but don't write it
+    local: true
+
+  gemma:
+    provider: ollama
+    model: gemma3:1b
+    context_window: 8192
+    max_output_tokens: 2048
+    supports_tools: false
+    supports_mid_system: true
+    can_write_memory: false
+    local: true
+
+# Which model handles which kind of work by default.
+routes:
+  chat: opus
+  extract: haiku        # memory extraction (Phase 1+)
+  reflect: opus         # nightly reflection (Phase 3)
+  private: llama3       # anything marked private never leaves this machine
+  judge: opus           # grades eval answers
+
+# If a model is unavailable (no key, network, rate limit, outage), try these in order.
+fallback_order: [opus, gpt, haiku, llama3]
+
+# Turns text into vectors for memory search. Changing this model means re-embedding
+# stored memories: vectors from different models can't be compared.
+embedding:
+  provider: ollama              # `ollama pull nomic-embed-text` (~270 MB, runs locally)
+  model: nomic-embed-text
+  query_prefix: "search_query: "        # nomic-embed-text is trained with these prefixes
+  document_prefix: "search_document: "
+  min_similarity: 0.58          # calibrated for nomic-embed-text; other models need their own
